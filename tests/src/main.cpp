@@ -1,10 +1,10 @@
 // =============================================================================
-// tcxPly testApp - headless behavioral test (no window).
+// tcxPly tests - headless behavioral test (no window).
 //
-// Built and run by CI (2bbb/trussc-actions build-addon.yml, test_mode: "test"):
-// exit 0 = all pass, non-zero = failure -> CI fails. Console only, so it runs
-// on headless macOS / Windows / Linux runners. Files are written to the OS
-// temp dir via absolute paths (tc::getDataPath passes absolute paths through).
+// Built and run by CI (TrussC-org/ci-actions build-addon.yml): exit 0 = all
+// pass, non-zero = failure -> CI fails. Console only, so it runs on headless
+// macOS / Windows / Linux runners. Files are written to the OS temp dir via
+// absolute paths (tc::getDataPath passes absolute paths through).
 // =============================================================================
 
 #include <tcxPly.h>

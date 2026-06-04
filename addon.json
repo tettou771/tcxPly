@@ -4,5 +4,6 @@
   "license": "MIT",
   "category": "3d",
   "screenshot": "docs/preview.png",
+  "platforms": ["macos", "windows", "linux"],
   "keywords": ["ply", "mesh", "pointcloud", "io", "3d", "model"]
 }

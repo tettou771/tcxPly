@@ -95,6 +95,9 @@ bundled-data licenses.
 
 ![example-load running, showing the fragment.ply colored point cloud](docs/example-load.png)
 
+> The `example-*/` directories are meant to be run and read. The `tests/`
+> directory is the headless CI test harness — you can ignore it.
+
 ## Limitations
 
 - Writing supports only ASCII and little-endian binary (big-endian is read-only)
