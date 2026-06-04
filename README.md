@@ -1,5 +1,7 @@
 # tcxPly
 
+[![CI](https://github.com/tettou771/tcxPly/actions/workflows/ci.yml/badge.svg)](https://github.com/tettou771/tcxPly/actions/workflows/ci.yml)
+
 PLY（Stanford Polygon File Format）ファイルを `tc::Mesh` として読み書きする TrussC アドオン。
 メッシュも点群も、ASCII / バイナリ（リトル・ビッグエンディアン）も読める。
 
