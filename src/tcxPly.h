@@ -38,9 +38,7 @@
 #include <string>
 #include <vector>
 
-namespace tcx {
-
-using namespace tc;
+namespace tcx::ply {
 
 class Ply {
 public:
@@ -64,12 +62,12 @@ public:
     //   texcoord (s,t | u,v | texture_u,texture_v), faces (vertex_indices).
     // Polygons with >3 sides are fan-triangulated. With no face element the
     // mesh is returned as PrimitiveMode::Points (a point cloud).
-    Mesh toMesh() const;
+    tc::Mesh toMesh() const;
 
     // Replace the contents from a Mesh (for saving). Only attributes the mesh
     // actually has are written. A mesh with indices (or a triangle soup) gets
     // a face element; otherwise it is saved as a point cloud.
-    Ply& setMesh(const Mesh& mesh);
+    Ply& setMesh(const tc::Mesh& mesh);
 
     // ---- file-level metadata (preserved across load -> save) ---------------
 
@@ -124,24 +122,24 @@ private:
                                   const std::string& property) const {
         const PlyElement* e = findElement(element);
         if (!e) {
-            logWarning() << "[tcxPly] no '" << element << "' element";
+            tc::logWarning() << "[tcxPly] no '" << element << "' element";
             return {};
         }
         int idx = e->findProperty(property);
         if (idx < 0) {
-            logWarning() << "[tcxPly] '" << element << "' has no property '"
+            tc::logWarning() << "[tcxPly] '" << element << "' has no property '"
                          << property << "'";
             return {};
         }
         const PlyProperty& p = e->properties[idx];
         if (p.isList) {
-            logWarning() << "[tcxPly] property '" << property
+            tc::logWarning() << "[tcxPly] property '" << property
                          << "' is a list, not a scalar";
             return {};
         }
         PlyType want = plyTypeOf<T>();
         if (p.valueType != want) {
-            logWarning() << "[tcxPly] property '" << property << "' is "
+            tc::logWarning() << "[tcxPly] property '" << property << "' is "
                          << plyTypeName(p.valueType) << ", not "
                          << plyTypeName(want);
             return {};
@@ -162,17 +160,35 @@ private:
 // Free-function convenience wrappers — the common "I just want a Mesh" path.
 // -----------------------------------------------------------------------------
 
-inline Mesh loadPly(const std::string& path) {
+inline tc::Mesh loadPly(const std::string& path) {
     Ply p;
     p.load(path);
     return p.toMesh();
 }
 
-inline bool savePly(const std::string& path, const Mesh& mesh,
+inline bool savePly(const std::string& path, const tc::Mesh& mesh,
                     PlyFormat format = PlyFormat::Ascii) {
     Ply p;
     p.setMesh(mesh);
     return p.save(path, format);
 }
 
-} // namespace tcx
+} // namespace tcx::ply
+
+// -----------------------------------------------------------------------------
+// Backward compatibility. The canonical namespace is now `tcx::ply`. These
+// silent aliases keep older code compiling: flat `tcx::Ply` and legacy
+// `trussc::Ply`. DEPRECATED — removed in v1.0.0.
+// (No [[deprecated]] attribute: under the usual `using namespace tc;` it would
+//  warn on idiomatic unqualified use too. See tcxPly README for migration.)
+// -----------------------------------------------------------------------------
+namespace tcx {
+    using ply::Ply;       // deprecated: remove at v1.0.0
+    using ply::loadPly;   // deprecated: remove at v1.0.0
+    using ply::savePly;   // deprecated: remove at v1.0.0
+}
+namespace trussc {
+    using tcx::ply::Ply;       // deprecated: remove at v1.0.0
+    using tcx::ply::loadPly;   // deprecated: remove at v1.0.0
+    using tcx::ply::savePly;   // deprecated: remove at v1.0.0
+}

@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-namespace tcx {
+namespace tcx::ply {
 
 // Output format. Reading auto-detects any of these from the header; writing
 // supports Ascii and BinaryLittleEndian (the two formats in practical use).
@@ -139,4 +139,36 @@ struct BoundingBox {
     tc::Vec3 size()   const { return max - min; }
 };
 
-} // namespace tcx
+} // namespace tcx::ply
+
+// -----------------------------------------------------------------------------
+// Backward compatibility. The canonical namespace is now `tcx::ply`. These
+// silent aliases keep older code compiling: flat `tcx::PlyType` and legacy
+// `trussc::PlyType`. DEPRECATED — removed in v1.0.0.
+// (No [[deprecated]] attribute: under the usual `using namespace tc;` it would
+//  warn on idiomatic unqualified use too. See tcxPly README for migration.)
+// -----------------------------------------------------------------------------
+namespace tcx {
+    using ply::PlyFormat;        // deprecated: remove at v1.0.0
+    using ply::PlyType;          // deprecated: remove at v1.0.0
+    using ply::plyTypeSize;      // deprecated: remove at v1.0.0
+    using ply::plyTypeIsFloat;   // deprecated: remove at v1.0.0
+    using ply::plyTypeName;      // deprecated: remove at v1.0.0
+    using ply::plyTypeOf;        // deprecated: remove at v1.0.0
+    using ply::PlyProperty;      // deprecated: remove at v1.0.0
+    using ply::PlyElement;       // deprecated: remove at v1.0.0
+    using ply::PlyPropertyInfo;  // deprecated: remove at v1.0.0
+    using ply::BoundingBox;      // deprecated: remove at v1.0.0
+}
+namespace trussc {
+    using tcx::ply::PlyFormat;        // deprecated: remove at v1.0.0
+    using tcx::ply::PlyType;          // deprecated: remove at v1.0.0
+    using tcx::ply::plyTypeSize;      // deprecated: remove at v1.0.0
+    using tcx::ply::plyTypeIsFloat;   // deprecated: remove at v1.0.0
+    using tcx::ply::plyTypeName;      // deprecated: remove at v1.0.0
+    using tcx::ply::plyTypeOf;        // deprecated: remove at v1.0.0
+    using tcx::ply::PlyProperty;      // deprecated: remove at v1.0.0
+    using tcx::ply::PlyElement;       // deprecated: remove at v1.0.0
+    using tcx::ply::PlyPropertyInfo;  // deprecated: remove at v1.0.0
+    using tcx::ply::BoundingBox;      // deprecated: remove at v1.0.0
+}

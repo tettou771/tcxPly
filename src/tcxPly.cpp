@@ -11,7 +11,7 @@
 using namespace std;
 using namespace tc;
 
-namespace tcx {
+namespace tcx::ply {
 
 // =============================================================================
 // Endianness & low-level byte helpers
@@ -582,4 +582,4 @@ BoundingBox Ply::getBoundingBox() const {
     return bb;
 }
 
-} // namespace tcx
+} // namespace tcx::ply

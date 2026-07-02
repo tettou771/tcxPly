@@ -18,6 +18,7 @@
 #include <vector>
 
 using namespace std;
+using namespace tc;
 using namespace tcx;
 
 static int g_pass = 0, g_fail = 0;
