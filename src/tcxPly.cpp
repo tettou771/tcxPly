@@ -132,12 +132,36 @@ bool Ply::load(const string& path) {
     elements_.clear();
     format_ = PlyFormat::Ascii;
 
+    // A failed load leaves the Ply empty, whatever part had been parsed.
+    bool loaded = false;
+    struct ClearOnFail {
+        Ply* self; const bool* loaded;
+        ~ClearOnFail() {
+            if (*loaded) return;
+            self->comments_.clear();
+            self->objInfo_.clear();
+            self->elements_.clear();
+            self->format_ = PlyFormat::Ascii;
+        }
+    } clearOnFail{this, &loaded};
+
     string full = getDataPath(path);
     ifstream in(full, ios::binary);
     if (!in) {
         logError() << "[tcxPly] cannot open: " << full;
         return false;
     }
+
+    // The file size bounds every count in the (untrusted) header: nothing is
+    // allocated for rows the file cannot possibly contain.
+    in.seekg(0, ios::end);
+    const streamoff endPos = in.tellg();
+    in.seekg(0, ios::beg);
+    if (!in || endPos < 0) {
+        logError() << "[tcxPly] cannot determine file size: " << full;
+        return false;
+    }
+    const uint64_t fileSize = (uint64_t)endPos;
 
     // ---- header ----
     string line;
@@ -167,12 +191,18 @@ bool Ply::load(const string& path) {
             sawFormat = true;
         } else if (t[0] == "element") {
             if (t.size() < 3) { logError() << "[tcxPly] malformed element line"; return false; }
+            // Digits only: strtoull would silently accept "-1" as 2^64-1.
+            if (t[2].find_first_not_of("0123456789") != string::npos || t[2].size() > 19) {
+                logError() << "[tcxPly] invalid element count in: " << line;
+                return false;
+            }
             PlyElement e;
             e.name = t[1];
             e.count = (size_t)strtoull(t[2].c_str(), nullptr, 10);
             elements_.push_back(std::move(e));
         } else if (t[0] == "property") {
             if (elements_.empty()) { logError() << "[tcxPly] property before any element"; return false; }
+            if (t.size() < 3) { logError() << "[tcxPly] malformed property: " << line; return false; }
             PlyProperty p;
             if (t[1] == "list") {
                 // property list <countType> <valueType> <name>
@@ -188,7 +218,7 @@ bool Ply::load(const string& path) {
                 p.valueType = parsePlyType(t[1]);
                 p.name      = t[2];
             }
-            if (p.valueType == PlyType::Invalid) {
+            if (p.valueType == PlyType::Invalid || (p.isList && p.countType == PlyType::Invalid)) {
                 logError() << "[tcxPly] unknown property type in: " << line;
                 return false;
             }
@@ -207,29 +237,72 @@ bool Ply::load(const string& path) {
     const bool fileLE = (format_ != PlyFormat::BinaryBigEndian);
     const bool swap   = (format_ != PlyFormat::Ascii) && (fileLE != hostIsLittleEndian());
 
+    in.clear();
+    const streamoff dataStart = in.tellg();
+    if (dataStart < 0 || (uint64_t)dataStart > fileSize) {
+        logError() << "[tcxPly] cannot locate the data section: " << full;
+        return false;
+    }
+    uint64_t dataLeft = fileSize - (uint64_t)dataStart;   // bytes not yet consumed
+
     for (PlyElement& e : elements_) {
+        // Check the declared row count against the bytes the file still has
+        // BEFORE allocating, so a corrupt or hostile header cannot make us
+        // reserve memory for rows that are not there.
+        // Binary: every row takes at least the sum of its scalar sizes plus one
+        // count value per list. ASCII: every row takes at least one byte per
+        // token, plus a separator.
+        const bool ascii = (format_ == PlyFormat::Ascii);
+        uint64_t minRowBytes = 0;
+        for (const PlyProperty& p : e.properties) {
+            if (ascii)          minRowBytes += 2;
+            else if (p.isList)  minRowBytes += (uint64_t)plyTypeSize(p.countType);
+            else                minRowBytes += (uint64_t)plyTypeSize(p.valueType);
+        }
+        if (ascii && minRowBytes == 0) minRowBytes = 1;   // an empty line per row
+        if (minRowBytes > 0) {
+            // ASCII tolerates a missing final newline, hence the +1.
+            const uint64_t budget = ascii ? dataLeft + 1 : dataLeft;
+            if ((uint64_t)e.count > budget / minRowBytes) {
+                logError() << "[tcxPly] element '" << e.name << "' declares " << e.count
+                           << " rows but the file has only " << dataLeft
+                           << " bytes left (at least " << minRowBytes
+                           << " bytes per row needed): " << full;
+                return false;
+            }
+        } else if (!ascii) {
+            continue;   // binary rows with no properties occupy no bytes
+        }
+
         // pre-size columns
         for (PlyProperty& p : e.properties) {
             if (p.isList) p.list.assign(e.count, {});
             else          p.scalar.assign(e.count, 0.0);
         }
 
-        if (format_ == PlyFormat::Ascii) {
+        if (ascii) {
             for (size_t row = 0; row < e.count; ++row) {
                 if (!getline(in, line)) {
                     logError() << "[tcxPly] unexpected EOF in element '" << e.name
                                << "' at row " << row;
                     return false;
                 }
+                dataLeft -= min<uint64_t>(dataLeft, line.size() + 1);
                 stripCR(line);
                 istringstream ss(line);
                 for (PlyProperty& p : e.properties) {
                     if (p.isList) {
                         double n = 0; ss >> n;
-                        int cnt = (int)n;
+                        // Each list value needs at least one character.
+                        if (ss.fail() || !(n >= 0) || n > (double)line.size()) {
+                            logError() << "[tcxPly] bad list length in element '" << e.name
+                                       << "' at row " << row;
+                            return false;
+                        }
+                        const size_t cnt = (size_t)n;
                         auto& dst = p.list[row];
-                        dst.resize(max(0, cnt));
-                        for (int i = 0; i < cnt; ++i) ss >> dst[i];
+                        dst.resize(cnt);
+                        for (size_t i = 0; i < cnt; ++i) ss >> dst[i];
                     } else {
                         ss >> p.scalar[row];
                     }
@@ -244,14 +317,25 @@ bool Ply::load(const string& path) {
             for (size_t row = 0; row < e.count; ++row) {
                 for (PlyProperty& p : e.properties) {
                     if (p.isList) {
+                        const uint64_t countSize = (uint64_t)plyTypeSize(p.countType);
+                        const uint64_t valueSize = (uint64_t)plyTypeSize(p.valueType);
                         double n = readBinaryScalar(in, p.countType, swap);
-                        int cnt = (int)n;
+                        dataLeft -= min(dataLeft, countSize);
+                        // The list must fit in the rest of the file.
+                        if (!in || !(n >= 0) || n > (double)(dataLeft / valueSize)) {
+                            logError() << "[tcxPly] bad list length in binary element '"
+                                       << e.name << "' at row " << row;
+                            return false;
+                        }
+                        const size_t cnt = (size_t)n;
                         auto& dst = p.list[row];
-                        dst.resize(max(0, cnt));
-                        for (int i = 0; i < cnt; ++i)
+                        dst.resize(cnt);
+                        for (size_t i = 0; i < cnt; ++i)
                             dst[i] = readBinaryScalar(in, p.valueType, swap);
+                        dataLeft -= min<uint64_t>(dataLeft, cnt * valueSize);
                     } else {
                         p.scalar[row] = readBinaryScalar(in, p.valueType, swap);
+                        dataLeft -= min<uint64_t>(dataLeft, (uint64_t)plyTypeSize(p.valueType));
                     }
                 }
                 if (!in) {
@@ -263,6 +347,7 @@ bool Ply::load(const string& path) {
         }
     }
 
+    loaded = true;
     logNotice() << "[tcxPly] loaded " << path << " (" << getNumVertices()
                 << " verts, " << getNumFaces() << " faces)";
     return true;
