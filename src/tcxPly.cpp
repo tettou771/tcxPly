@@ -145,8 +145,9 @@ bool Ply::load(const string& path) {
         }
     } clearOnFail{this, &loaded};
 
-    string full = getDataPath(path);
-    ifstream in(full, ios::binary);
+    const fs::path fullPath = getDataPath(path);
+    const string full = pathToUtf8(fullPath);
+    ifstream in(fullPath, ios::binary);
     if (!in) {
         logError() << "[tcxPly] cannot open: " << full;
         return false;
@@ -550,8 +551,9 @@ bool Ply::save(const string& path, PlyFormat format) const {
         format = PlyFormat::BinaryLittleEndian;
     }
 
-    string full = getDataPath(path);
-    ofstream out(full, ios::binary);
+    const fs::path fullPath = getDataPath(path);
+    const string full = pathToUtf8(fullPath);
+    ofstream out(fullPath, ios::binary);
     if (!out) {
         logError() << "[tcxPly] cannot write: " << full;
         return false;
