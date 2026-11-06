@@ -283,6 +283,85 @@ int main() {
         check("error: empty after failed load", in.getNumVertices() == 0);
     }
 
+    // ----- 7. Untrusted input: headers that lie about the file -----
+    // Each case must fail cleanly (return false, leave the Ply empty) without
+    // crashing or allocating for rows the file does not contain.
+    {
+        auto writeRaw = [&](const char* name, const string& bytes) {
+            string path = tmp(name);
+            ofstream o(path, ios::binary);
+            o.write(bytes.data(), (streamsize)bytes.size());
+            return path;
+        };
+        auto expectFail = [&](const char* label, const string& bytes) {
+            Ply in;
+            bool ok = in.load(writeRaw("tcxply_hostile.ply", bytes));
+            check(label, !ok && in.getNumVertices() == 0 && in.getElements().empty());
+        };
+        const string binHead =
+            "ply\nformat binary_little_endian 1.0\n"
+            "element vertex %COUNT%\n"
+            "property float x\nproperty float y\nproperty float z\n"
+            "end_header\n";
+        auto withCount = [&](const string& count) {
+            string h = binHead;
+            h.replace(h.find("%COUNT%"), 7, count);
+            return h;
+        };
+        const string twelve(12, '\0');   // one vertex of binary data
+
+        expectFail("hostile: binary count 4e9, 12 bytes of data",
+                   withCount("4000000000") + twelve);
+        expectFail("hostile: binary count 2^63, 12 bytes of data",
+                   withCount("9223372036854775807") + twelve);
+        expectFail("hostile: count overflows 64 bits",
+                   withCount("99999999999999999999999") + twelve);
+        expectFail("hostile: negative element count", withCount("-1") + twelve);
+        expectFail("hostile: non-numeric element count", withCount("lots") + twelve);
+        expectFail("hostile: binary truncated mid-row (2 verts declared, 1.5 present)",
+                   withCount("2") + twelve + string(6, '\0'));
+        expectFail("hostile: ascii count 1e9, 2 rows of data",
+                   "ply\nformat ascii 1.0\nelement vertex 1000000000\n"
+                   "property float x\nproperty float y\nproperty float z\n"
+                   "end_header\n1 2 3\n4 5 6\n");
+        expectFail("hostile: bare 'property' line",
+                   "ply\nformat ascii 1.0\nelement vertex 1\nproperty\nend_header\n");
+        expectFail("hostile: list count type unknown",
+                   "ply\nformat ascii 1.0\nelement face 1\n"
+                   "property list bogus int vertex_indices\nend_header\n3 0 1 2\n");
+
+        // Binary list whose length field claims far more values than the file has.
+        {
+            string h = "ply\nformat binary_little_endian 1.0\nelement face 1\n"
+                       "property list int int vertex_indices\nend_header\n";
+            int32_t huge = 2000000000;   // ~8 GB of int32 values
+            string body(reinterpret_cast<const char*>(&huge), 4);
+            body += string(8, '\0');
+            expectFail("hostile: binary list length exceeds file", h + body);
+            int32_t neg = -5;
+            body.assign(reinterpret_cast<const char*>(&neg), 4);
+            body += string(8, '\0');
+            expectFail("hostile: binary list length negative", h + body);
+        }
+        // ASCII list whose length field claims more values than the line has.
+        expectFail("hostile: ascii list length exceeds line",
+                   "ply\nformat ascii 1.0\nelement face 1\n"
+                   "property list uchar int vertex_indices\nend_header\n2000000000 1 2\n");
+
+        // A well-formed file with an exact-size body still loads (the size check
+        // must not reject valid input, including a final line with no newline).
+        {
+            Ply in;
+            bool ok = in.load(writeRaw("tcxply_exact.ply", withCount("1") + twelve));
+            check("hostile: exact-size binary body still loads", ok && in.getNumVertices() == 1);
+            ok = in.load(writeRaw("tcxply_nonl.ply",
+                   "ply\nformat ascii 1.0\nelement vertex 2\nproperty float x\n"
+                   "end_header\n1\n2"));
+            check("hostile: ascii without final newline still loads",
+                  ok && in.getNumVertices() == 2);
+        }
+    }
+
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
