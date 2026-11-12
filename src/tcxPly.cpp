@@ -553,6 +553,11 @@ bool Ply::save(const string& path, PlyFormat format) const {
 
     const fs::path fullPath = getDataPath(path);
     const string full = pathToUtf8(fullPath);
+    // Like TrussC's own save functions, create the destination folder first.
+    if (fullPath.has_parent_path()) {
+        error_code ec;
+        fs::create_directories(fullPath.parent_path(), ec);
+    }
     ofstream out(fullPath, ios::binary);
     if (!out) {
         logError() << "[tcxPly] cannot write: " << full;
